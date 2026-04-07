@@ -1,0 +1,83 @@
+name: smart-traffic-signal-control
+version: "1.0.0"
+license: MIT
+description: >
+  RL environment simulating a 4-way signalised intersection.
+  Agent controls signal phases and durations to minimise vehicle
+  wait times, queue lengths, and phase-switch waste across 3 tiers.
+
+tasks:
+  - id: easy
+    description: "Off-peak balanced flow – uniform arrivals, no incidents"
+    difficulty: 1
+    max_steps: 60
+  - id: medium
+    description: "Rush-hour imbalance – N-S dominant commuter flow"
+    difficulty: 2
+    max_steps: 80
+  - id: hard
+    description: "Peak flow + random incidents + emergency vehicles"
+    difficulty: 3
+    max_steps: 100
+
+observation_space:
+  type: object
+  properties:
+    arms:
+      type: array
+      items:
+        type: object
+        properties:
+          direction:      { type: string }
+          queue_length:   { type: integer }
+          avg_wait_time:  { type: number }
+          avg_speed:      { type: number }
+          density:        { type: number }
+          has_emergency:  { type: boolean }
+    current_phase:  { type: integer, minimum: 0, maximum: 3 }
+    phase_elapsed:  { type: number }
+    time_of_day:    { type: number, minimum: 0, maximum: 24 }
+    episode_step:   { type: integer }
+    total_cleared:  { type: integer }
+
+action_space:
+  type: object
+  properties:
+    phase:    { type: integer, minimum: 0, maximum: 3 }
+    duration: { type: integer, minimum: 10, maximum: 90 }
+
+reward_range: [0.0, 1.0]
+
+reward_components:
+  - name: throughput_bonus
+    weight: 0.30
+    description: "Vehicles cleared vs target per step"
+  - name: wait_time_score
+    weight: 0.30
+    description: "Inverse avg wait time normalised to target"
+  - name: queue_reduction
+    weight: 0.20
+    description: "Remaining queue vs max threshold"
+  - name: emergency_yield
+    weight: 0.10
+    description: "Fraction of emergency vehicles yielded to"
+  - name: phase_efficiency
+    weight: 0.05
+    description: "Penalise rapid phase switching"
+  - name: starvation_avoidance
+    weight: 0.05
+    description: "Penalise arms with vehicles waiting over 120s"
+
+baseline_scores:
+  random:
+    easy:   0.52
+    medium: 0.39
+    hard:   0.30
+  fixed_cycle:
+    easy:   0.61
+    medium: 0.43
+    hard:   0.31
+  greedy:
+    easy:   0.78
+    medium: 0.49
+    hard:   0.37

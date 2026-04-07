@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>TrafficSignalEnv — Smart Intersection Control</title>
+<style>
+  :root {
+    --bg: #0f1117; --surface: #1a1d27; --card: #21253a;
+    --border: #2e3450; --accent: #4f8ef7; --accent2: #34d399;
+    --warn: #f59e0b; --danger: #ef4444; --text: #e2e8f0;
+    --muted: #8892b0; --green: #22c55e; --red: #ef4444;
+    --phase0: #4f8ef7; --phase1: #a78bfa; --phase2: #34d399; --phase3: #fb923c;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; }
+
+  /* ── HEADER ── */
+  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 16px 32px; display: flex; align-items: center; justify-content: space-between; }
+  header h1 { font-size: 1.3rem; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+  header h1 span.logo { font-size: 1.6rem; }
+  .badge { background: #1e3a5f; color: var(--accent); font-size: 0.7rem; font-weight: 600; padding: 3px 10px; border-radius: 20px; border: 1px solid var(--accent); letter-spacing: .5px; }
+  .badge.green { background: #14532d; color: var(--accent2); border-color: var(--accent2); }
+
+  /* ── LAYOUT ── */
+  .container { max-width: 1400px; margin: 0 auto; padding: 24px 24px 48px; display: grid; grid-template-columns: 340px 1fr; gap: 20px; }
+  @media (max-width: 900px) { .container { grid-template-columns: 1fr; } }
+
+  /* ── CARDS ── */
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+  .card-title { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+  .card-title .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+
+  /* ── TASK SELECTOR ── */
+  .task-tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+  .task-tab { flex: 1; padding: 10px 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--muted); font-size: 0.8rem; font-weight: 600; cursor: pointer; text-align: center; transition: all .2s; }
+  .task-tab:hover { border-color: var(--accent); color: var(--text); }
+  .task-tab.active { background: #1e3a5f; border-color: var(--accent); color: var(--accent); }
+  .task-tab.medium.active { background: #2d1f5e; border-color: #a78bfa; color: #a78bfa; }
+  .task-tab.hard.active { background: #3b1515; border-color: var(--danger); color: var(--danger); }
+
+  /* ── CONTROLS ── */
+  label { display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+  .control-row { margin-bottom: 16px; }
+  .phase-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .phase-btn { padding: 10px 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--muted); font-size: 0.75rem; font-weight: 600; cursor: pointer; text-align: center; transition: all .2s; line-height: 1.4; }
+  .phase-btn:hover { border-color: #4f8ef7; color: var(--text); }
+  .phase-btn.selected { border-color: var(--accent); background: #1e3a5f; color: #7eb3fa; }
+  .slider-row { display: flex; align-items: center; gap: 10px; }
+  input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
+  .slider-val { color: var(--accent); font-weight: 700; font-size: 0.9rem; min-width: 36px; text-align: right; }
+
+  /* ── RUN BUTTON ── */
+  .run-btn { width: 100%; padding: 13px; border: none; border-radius: 10px; background: linear-gradient(135deg, #3b82f6, #6366f1); color: white; font-size: 1rem; font-weight: 700; cursor: pointer; letter-spacing: .5px; transition: opacity .2s, transform .1s; margin-top: 4px; }
+  .run-btn:hover { opacity: .9; transform: translateY(-1px); }
+  .run-btn:active { transform: translateY(0); }
+  .run-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+  /* ── INTERSECTION VISUAL ── */
+  .intersection-wrap { display: flex; justify-content: center; margin: 8px 0 20px; }
+  canvas#intersection { border-radius: 12px; }
+
+  /* ── ARM STATS ── */
+  .arms-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+  .arm-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+  .arm-card .arm-dir { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 8px; }
+  .arm-stat { display: flex; justify-content: space-between; font-size: 0.78rem; margin-bottom: 4px; }
+  .arm-stat .val { font-weight: 700; color: var(--text); }
+  .queue-bar { height: 5px; background: var(--border); border-radius: 3px; margin-top: 6px; overflow: hidden; }
+  .queue-bar-fill { height: 100%; border-radius: 3px; background: var(--accent); transition: width .4s; }
+
+  /* ── REWARD ── */
+  .reward-display { text-align: center; padding: 20px 0 10px; }
+  .reward-score { font-size: 3.5rem; font-weight: 900; line-height: 1; }
+  .reward-label { font-size: 0.75rem; color: var(--muted); margin-top: 6px; text-transform: uppercase; letter-spacing: 1px; }
+  .reward-bar-wrap { margin: 14px 0; position: relative; }
+  .reward-bar-bg { height: 10px; background: var(--border); border-radius: 5px; overflow: hidden; }
+  .reward-bar-fill { height: 100%; border-radius: 5px; transition: width .5s cubic-bezier(.4,0,.2,1); }
+  .threshold-line { position: absolute; top: -4px; width: 2px; height: 18px; background: var(--warn); border-radius: 1px; }
+  .threshold-lbl { position: absolute; top: -20px; font-size: 0.65rem; color: var(--warn); transform: translateX(-50%); }
+
+  /* ── REWARD BREAKDOWN ── */
+  .breakdown-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .breakdown-label { font-size: 0.75rem; color: var(--muted); width: 130px; flex-shrink: 0; }
+  .breakdown-bar-wrap { flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+  .breakdown-bar { height: 100%; border-radius: 4px; transition: width .4s; }
+  .breakdown-val { font-size: 0.75rem; font-weight: 700; width: 44px; text-align: right; }
+
+  /* ── EPISODE HISTORY ── */
+  .history-chart { width: 100%; height: 90px; }
+  .stat-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+  .stat-pill { flex: 1; min-width: 90px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+  .stat-pill .sp-label { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .stat-pill .sp-val { font-size: 1.2rem; font-weight: 700; color: var(--text); margin-top: 2px; }
+
+  /* ── PHASE INFO ── */
+  .phase-info { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .phase-pill { padding: 6px 12px; border-radius: 6px; font-size: 0.72rem; font-weight: 600; border: 1px solid; }
+
+  /* ── LOG ── */
+  .log-wrap { background: #0a0c14; border: 1px solid var(--border); border-radius: 8px; padding: 12px; height: 140px; overflow-y: auto; font-family: monospace; font-size: 0.72rem; }
+  .log-line { padding: 2px 0; border-bottom: 1px solid #1a1d27; line-height: 1.5; }
+  .log-line .step-n { color: var(--muted); }
+  .log-line .rew { color: var(--accent2); font-weight: 700; }
+  .log-line .incident { color: var(--warn); }
+  .log-line .emergency { color: var(--danger); }
+  .log-line .done { color: var(--accent2); font-weight: 700; }
+
+  /* ── BASELINE TABLE ── */
+  table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  th { text-align: left; padding: 8px 10px; color: var(--muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: .5px; border-bottom: 1px solid var(--border); }
+  td { padding: 9px 10px; border-bottom: 1px solid #1c2035; }
+  tr:last-child td { border-bottom: none; }
+  .score-chip { display: inline-block; padding: 2px 10px; border-radius: 12px; font-weight: 700; font-size: 0.78rem; }
+  .score-high { background: #14532d; color: var(--accent2); }
+  .score-mid { background: #1e3a5f; color: var(--accent); }
+  .score-low { background: #3b1515; color: var(--danger); }
+
+  /* ── MISC ── */
+  .incident-tag { display: inline-block; padding: 2px 8px; background: #3b2a00; color: var(--warn); border-radius: 4px; font-size: 0.7rem; font-weight: 600; margin: 2px; }
+  .em-tag { display: inline-block; padding: 2px 8px; background: #3b1515; color: var(--danger); border-radius: 4px; font-size: 0.7rem; font-weight: 600; margin: 2px; }
+  .status-bar { display: flex; align-items: center; gap: 12px; font-size: 0.75rem; color: var(--muted); margin-bottom: 8px; flex-wrap: wrap; }
+  .status-bar .sep { color: var(--border); }
+  .progress-bar { height: 4px; background: var(--border); border-radius: 2px; margin-bottom: 20px; overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width .3s; }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; vertical-align: middle; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  footer { text-align: center; padding: 24px; color: var(--muted); font-size: 0.75rem; border-top: 1px solid var(--border); margin-top: 20px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span class="logo">🚦</span> TrafficSignalEnv <span class="badge">OpenEnv v1.0</span></h1>
+  <div style="display:flex;gap:8px;align-items:center;">
+    <span class="badge green">RL · Real-World</span>
+    <span class="badge">Intersection Control</span>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- ── LEFT PANEL ── -->
+  <div>
+
+    <!-- Task selector -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title"><span class="dot"></span>Select Task</div>
+      <div class="task-tabs">
+        <div class="task-tab easy active" onclick="selectTask('easy',this)">🟢 Easy</div>
+        <div class="task-tab medium" onclick="selectTask('medium',this)">🟡 Medium</div>
+        <div class="task-tab hard" onclick="selectTask('hard',this)">🔴 Hard</div>
+      </div>
+      <div id="task-desc" style="font-size:0.78rem;color:var(--muted);line-height:1.5;"></div>
+    </div>
+
+    <!-- Agent controls -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title"><span class="dot" style="background:var(--accent2)"></span>Agent Action</div>
+
+      <div class="control-row">
+        <label>Signal Phase</label>
+        <div class="phase-grid" id="phase-grid">
+          <div class="phase-btn selected" data-phase="0" onclick="selectPhase(0)">↕ N-S Straight<br><span style="font-weight:400;color:var(--muted);font-size:0.68rem;">North + South</span></div>
+          <div class="phase-btn" data-phase="1" onclick="selectPhase(1)">↔ E-W Straight<br><span style="font-weight:400;color:var(--muted);font-size:0.68rem;">East + West</span></div>
+          <div class="phase-btn" data-phase="2" onclick="selectPhase(2)">↖ N-S Left Turn<br><span style="font-weight:400;color:var(--muted);font-size:0.68rem;">North only</span></div>
+          <div class="phase-btn" data-phase="3" onclick="selectPhase(3)">↙ E-W Left Turn<br><span style="font-weight:400;color:var(--muted);font-size:0.68rem;">East only</span></div>
+        </div>
+      </div>
+
+      <div class="control-row">
+        <label>Duration — <span id="dur-display">30</span>s</label>
+        <div class="slider-row">
+          <span style="font-size:0.7rem;color:var(--muted);">10s</span>
+          <input type="range" id="duration-slider" min="10" max="90" step="5" value="30" oninput="document.getElementById('dur-display').textContent=this.value">
+          <span style="font-size:0.7rem;color:var(--muted);">90s</span>
+        </div>
+      </div>
+
+      <button class="run-btn" id="run-btn" onclick="runStep()">⚡ Apply Signal Phase</button>
+      <button class="run-btn" id="reset-btn" onclick="resetEpisode()" style="background:var(--surface);border:1px solid var(--border);color:var(--muted);margin-top:8px;font-size:0.85rem;padding:9px;">↺ Reset Episode</button>
+      <button class="run-btn" id="auto-btn" onclick="toggleAuto()" style="background:var(--surface);border:1px solid var(--border);color:var(--muted);margin-top:8px;font-size:0.85rem;padding:9px;">▶ Auto-Run Greedy Agent</button>
+    </div>
+
+    <!-- Baseline table -->
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:var(--warn)"></span>Baseline Scores (seed=42)</div>
+      <table>
+        <thead><tr><th>Agent</th><th>Easy</th><th>Medium</th><th>Hard</th></tr></thead>
+        <tbody>
+          <tr><td>Random</td><td><span class="score-chip score-low">0.52</span></td><td><span class="score-chip score-low">0.39</span></td><td><span class="score-chip score-low">0.30</span></td></tr>
+          <tr><td>Fixed Cycle</td><td><span class="score-chip score-mid">0.61</span></td><td><span class="score-chip score-mid">0.43</span></td><td><span class="score-chip score-low">0.31</span></td></tr>
+          <tr><td>Greedy</td><td><span class="score-chip score-high">0.78</span></td><td><span class="score-chip score-mid">0.49</span></td><td><span class="score-chip score-mid">0.37</span></td></tr>
+          <tr><td style="color:var(--accent);">RL Target</td><td><span class="score-chip score-high">&gt;0.85</span></td><td><span class="score-chip score-high">&gt;0.65</span></td><td><span class="score-chip score-mid">&gt;0.55</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── RIGHT PANEL ── -->
+  <div>
+
+    <!-- Intersection canvas -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title"><span class="dot" style="background:var(--accent2)"></span>Live Intersection View</div>
+      <div class="status-bar" id="status-bar">
+        <span>Task: <b id="sb-task">easy</b></span><span class="sep">|</span>
+        <span>Step: <b id="sb-step">0</b></span><span class="sep">|</span>
+        <span>Phase: <b id="sb-phase">N-S Straight</b></span><span class="sep">|</span>
+        <span>Cleared: <b id="sb-cleared">0</b></span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+      <div class="intersection-wrap">
+        <canvas id="intersection" width="480" height="400"></canvas>
+      </div>
+      <div id="incident-badges" style="min-height:24px;margin-top:4px;"></div>
+    </div>
+
+    <!-- Arm stats -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title"><span class="dot" style="background:#a78bfa)"></span>Arm Statistics</div>
+      <div class="arms-grid" id="arms-grid">
+        <div class="arm-card" id="arm-north"><div class="arm-dir">⬆ North</div><div class="arm-stat"><span>Queue</span><span class="val" id="q-north">—</span></div><div class="arm-stat"><span>Avg Wait</span><span class="val" id="w-north">—</span></div><div class="arm-stat"><span>Density</span><span class="val" id="d-north">—</span></div><div class="queue-bar"><div class="queue-bar-fill" id="qb-north" style="width:0%"></div></div></div>
+        <div class="arm-card" id="arm-south"><div class="arm-dir">⬇ South</div><div class="arm-stat"><span>Queue</span><span class="val" id="q-south">—</span></div><div class="arm-stat"><span>Avg Wait</span><span class="val" id="w-south">—</span></div><div class="arm-stat"><span>Density</span><span class="val" id="d-south">—</span></div><div class="queue-bar"><div class="queue-bar-fill" id="qb-south" style="width:0%"></div></div></div>
+        <div class="arm-card" id="arm-east"><div class="arm-dir">➡ East</div><div class="arm-stat"><span>Queue</span><span class="val" id="q-east">—</span></div><div class="arm-stat"><span>Avg Wait</span><span class="val" id="w-east">—</span></div><div class="arm-stat"><span>Density</span><span class="val" id="d-east">—</span></div><div class="queue-bar"><div class="queue-bar-fill" id="qb-east" style="width:0%"></div></div></div>
+        <div class="arm-card" id="arm-west"><div class="arm-dir">⬅ West</div><div class="arm-stat"><span>Queue</span><span class="val" id="q-west">—</span></div><div class="arm-stat"><span>Avg Wait</span><span class="val" id="w-west">—</span></div><div class="arm-stat"><span>Density</span><span class="val" id="d-west">—</span></div><div class="queue-bar"><div class="queue-bar-fill" id="qb-west" style="width:0%"></div></div></div>
+      </div>
+    </div>
+
+    <!-- Reward -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--accent2)"></span>Step Reward</div>
+        <div class="reward-display">
+          <div class="reward-score" id="reward-score" style="color:var(--muted);">—</div>
+          <div class="reward-label">Score (0.0 – 1.0)</div>
+          <div class="reward-bar-wrap">
+            <div class="reward-bar-bg">
+              <div class="reward-bar-fill" id="reward-bar" style="width:0%;background:var(--accent)"></div>
+            </div>
+            <div class="threshold-line" style="left:50%"><span class="threshold-lbl">0.50</span></div>
+          </div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-pill"><div class="sp-label">Mean Reward</div><div class="sp-val" id="mean-rew">—</div></div>
+          <div class="stat-pill"><div class="sp-label">Total Cleared</div><div class="sp-val" id="total-cl">—</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--warn)"></span>Reward Breakdown</div>
+        <div id="breakdown">
+          <div class="breakdown-row"><div class="breakdown-label">Throughput</div><div class="breakdown-bar-wrap"><div class="breakdown-bar" id="br-throughput" style="width:0%;background:#4f8ef7"></div></div><div class="breakdown-val" id="bv-throughput">—</div></div>
+          <div class="breakdown-row"><div class="breakdown-label">Wait Time</div><div class="breakdown-bar-wrap"><div class="breakdown-bar" id="br-wait" style="width:0%;background:#34d399"></div></div><div class="breakdown-val" id="bv-wait">—</div></div>
+          <div class="breakdown-row"><div class="breakdown-label">Queue Level</div><div class="breakdown-bar-wrap"><div class="breakdown-bar" id="br-queue" style="width:0%;background:#a78bfa"></div></div><div class="breakdown-val" id="bv-queue">—</div></div>
+          <div class="breakdown-row"><div class="breakdown-label">Emergency</div><div class="breakdown-bar-wrap"><div class="breakdown-bar" id="br-em" style="width:0%;background:#ef4444"></div></div><div class="breakdown-val" id="bv-em">—</div></div>
+          <div class="breakdown-row"><div class="breakdown-label">Phase Eff.</div><div class="breakdown-bar-wrap"><div class="breakdown-bar" id="br-phase" style="width:0%;background:#fb923c"></div></div><div class="breakdown-val" id="bv-phase">—</div></div>
+          <div class="breakdown-row"><div class="breakdown-label">No Starvation</div><div class="breakdown-bar-wrap"><div class="breakdown-bar" id="br-starv" style="width:0%;background:#f59e0b"></div></div><div class="breakdown-val" id="bv-starv">—</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Episode history chart -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title"><span class="dot" style="background:var(--accent)"></span>Episode Reward History</div>
+      <canvas class="history-chart" id="history-chart"></canvas>
+    </div>
+
+    <!-- Step log -->
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:var(--muted)"></span>Step Log</div>
+      <div class="log-wrap" id="step-log"></div>
+    </div>
+
+  </div>
+</div>
+
+<footer>TrafficSignalEnv · OpenEnv v1.0 · Smart Intersection Control · MIT License</footer>
+
+<script>
+// ── STATE ─────────────────────────────────────────────────────────────────
+let currentTask = 'easy';
+let selectedPhase = 0;
+let episodeStep = 0;
+let maxSteps = 60;
+let rewardHistory = [];
+let lastObs = null;
+let autoRunInterval = null;
+let isRunning = false;
+
+const TASK_META = {
+  easy:   { desc: 'Off-peak, 7:00 am. Balanced uniform flow on all 4 arms. No incidents. Good for learning basic signal timing.', maxSteps: 60 },
+  medium: { desc: 'Morning rush, 8:00 am. Heavy N-S commuter flow (18/16 veh/min). Light E-W cross traffic. Agent must learn asymmetric phasing.', maxSteps: 80 },
+  hard:   { desc: 'Peak hour, 8:30 am. High volume on all arms + random road incidents + emergency vehicles. Agent must react dynamically.', maxSteps: 100 },
+};
+const PHASE_NAMES = ['N-S Straight', 'E-W Straight', 'N-S Left Turn', 'E-W Left Turn'];
+const PHASE_COLORS = ['#4f8ef7','#a78bfa','#34d399','#fb923c'];
+
+// ── INIT ─────────────────────────────────────────────────────────────────
+window.onload = async () => {
+  updateTaskDesc();
+  await resetEpisode();
+};
+
+function updateTaskDesc() {
+  document.getElementById('task-desc').textContent = TASK_META[currentTask].desc;
+  maxSteps = TASK_META[currentTask].maxSteps;
+}
+
+function selectTask(tid, el) {
+  currentTask = tid;
+  document.querySelectorAll('.task-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  updateTaskDesc();
+  stopAuto();
+  resetEpisode();
+}
+
+function selectPhase(p) {
+  selectedPhase = p;
+  document.querySelectorAll('.phase-btn').forEach(b => b.classList.remove('selected'));
+  document.querySelector(`[data-phase="${p}"]`).classList.add('selected');
+}
+
+// ── API CALLS ─────────────────────────────────────────────────────────────
+async function resetEpisode() {
+  const r = await fetch(`/reset/${currentTask}`, { method: 'POST' });
+  const obs = await r.json();
+  lastObs = obs;
+  episodeStep = 0;
+  rewardHistory = [];
+  document.getElementById('step-log').innerHTML = '';
+  updateUI(obs, null, null);
+  drawIntersection(obs, selectedPhase);
+  document.getElementById('reward-score').textContent = '—';
+  document.getElementById('reward-score').style.color = 'var(--muted)';
+  document.getElementById('reward-bar').style.width = '0%';
+  document.getElementById('mean-rew').textContent = '—';
+  document.getElementById('total-cl').textContent = '0';
+  clearBreakdown();
+  drawHistory();
+}
+
+async function runStep() {
+  if (isRunning) return;
+  isRunning = true;
+  document.getElementById('run-btn').disabled = true;
+  document.getElementById('run-btn').innerHTML = '<span class="spinner"></span>Applying…';
+
+  const dur = parseInt(document.getElementById('duration-slider').value);
+  const r = await fetch(`/step/${currentTask}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phase: selectedPhase, duration: dur }),
+  });
+  const result = await r.json();
+  episodeStep = result.info.step;
+  rewardHistory.push(result.reward);
+
+  const obs = result.observation || lastObs;
+  lastObs = obs;
+
+  updateUI(obs, result.reward, result.info);
+  drawIntersection(obs, selectedPhase);
+  drawHistory();
+  appendLog(result);
+
+  if (result.done) {
+    stopAuto();
+    document.getElementById('run-btn').innerHTML = '✅ Episode Complete — Reset to play again';
+    document.getElementById('run-btn').disabled = true;
+  } else {
+    document.getElementById('run-btn').disabled = false;
+    document.getElementById('run-btn').innerHTML = '⚡ Apply Signal Phase';
+  }
+  isRunning = false;
+}
+
+// ── GREEDY AUTO AGENT ──────────────────────────────────────────────────────
+function greedyAction(obs) {
+  if (!obs) return { phase: 0, duration: 30 };
+  const arms = {};
+  obs.arms.forEach(a => arms[a.direction] = a);
+
+  // emergency preemption
+  for (const a of obs.arms) {
+    if (a.has_emergency) {
+      const p = ['north','south'].includes(a.direction) ? 0 : 1;
+      return { phase: p, duration: 25 };
+    }
+  }
+  const ns = arms.north.queue_length + arms.south.queue_length;
+  const ew = arms.east.queue_length + arms.west.queue_length;
+  const phase = ns >= ew ? 0 : 1;
+  const dur = Math.max(15, Math.min(75, Math.max(ns, ew) * 3));
+  return { phase, duration: Math.round(dur / 5) * 5 };
+}
+
+function toggleAuto() {
+  if (autoRunInterval) { stopAuto(); return; }
+  document.getElementById('auto-btn').innerHTML = '⏹ Stop Auto-Run';
+  document.getElementById('auto-btn').style.color = 'var(--danger)';
+  autoRunInterval = setInterval(async () => {
+    if (!lastObs) return;
+    const action = greedyAction(lastObs);
+    selectPhase(action.phase);
+    document.getElementById('duration-slider').value = action.duration;
+    document.getElementById('dur-display').textContent = action.duration;
+    await runStep();
+    if (!lastObs || episodeStep >= maxSteps) stopAuto();
+  }, 600);
+}
+
+function stopAuto() {
+  if (autoRunInterval) { clearInterval(autoRunInterval); autoRunInterval = null; }
+  document.getElementById('auto-btn').innerHTML = '▶ Auto-Run Greedy Agent';
+  document.getElementById('auto-btn').style.color = '';
+}
+
+// ── UI UPDATES ─────────────────────────────────────────────────────────────
+function updateUI(obs, reward, info) {
+  if (!obs) return;
+
+  // status bar
+  document.getElementById('sb-task').textContent = currentTask;
+  document.getElementById('sb-step').textContent = `${episodeStep} / ${maxSteps}`;
+  document.getElementById('sb-phase').textContent = PHASE_NAMES[selectedPhase];
+  document.getElementById('sb-cleared').textContent = obs.total_cleared;
+  document.getElementById('progress-fill').style.width = `${(episodeStep / maxSteps) * 100}%`;
+
+  // arms
+  obs.arms.forEach(arm => {
+    const d = arm.direction;
+    document.getElementById(`q-${d}`).textContent = arm.queue_length;
+    document.getElementById(`w-${d}`).textContent = arm.avg_wait_time.toFixed(1) + 's';
+    document.getElementById(`d-${d}`).textContent = (arm.density * 100).toFixed(0) + '%';
+    document.getElementById(`qb-${d}`).style.width = `${arm.density * 100}%`;
+    const qb = document.getElementById(`qb-${d}`);
+    qb.style.background = arm.density > 0.7 ? 'var(--danger)' : arm.density > 0.4 ? 'var(--warn)' : 'var(--accent)';
+    document.getElementById(`arm-${d}`).style.borderColor = arm.has_emergency ? 'var(--danger)' : 'var(--border)';
+  });
+
+  // incidents
+  const badges = document.getElementById('incident-badges');
+  badges.innerHTML = '';
+  if (info && info.incidents && info.incidents.length > 0) {
+    info.incidents.forEach(i => {
+      badges.innerHTML += `<span class="incident-tag">⚠ Incident: ${i}</span>`;
+    });
+  }
+  if (info && info.emergencies_yielded > 0) {
+    badges.innerHTML += `<span class="em-tag">🚨 Emergency yielded</span>`;
+  }
+
+  if (reward === null) return;
+
+  // reward score
+  const rewardEl = document.getElementById('reward-score');
+  rewardEl.textContent = reward.toFixed(3);
+  rewardEl.style.color = reward >= 0.6 ? 'var(--green)' : reward >= 0.4 ? 'var(--warn)' : 'var(--red)';
+  document.getElementById('reward-bar').style.width = `${reward * 100}%`;
+  document.getElementById('reward-bar').style.background = reward >= 0.6 ? 'var(--green)' : reward >= 0.4 ? 'var(--warn)' : 'var(--red)';
+
+  const mean = rewardHistory.reduce((a, b) => a + b, 0) / rewardHistory.length;
+  document.getElementById('mean-rew').textContent = mean.toFixed(3);
+  document.getElementById('total-cl').textContent = obs.total_cleared;
+
+  // estimate breakdown components from info
+  if (info) {
+    const tgt_clear = { easy: 8, medium: 14, hard: 18 }[currentTask];
+    const tgt_wait = { easy: 25, medium: 50, hard: 80 }[currentTask];
+    const max_q = { easy: 20, medium: 40, hard: 60 }[currentTask];
+
+    const t = Math.min(1, info.cleared / tgt_clear);
+    const avgW = info.avg_wait;
+    const w = Math.max(0, 1 - avgW / (tgt_wait * 2));
+    const q = Math.max(0, 1 - info.queue_total / max_q);
+    const em = 1.0;
+    const ph = info.phase_switched ? 0.7 : 1.0;
+    const st = 1.0;
+
+    setBreakdown('throughput', t * 0.30, '#4f8ef7');
+    setBreakdown('wait', w * 0.30, '#34d399');
+    setBreakdown('queue', q * 0.20, '#a78bfa');
+    setBreakdown('em', em * 0.10, '#ef4444');
+    setBreakdown('phase', ph * 0.05, '#fb923c');
+    setBreakdown('starv', st * 0.05, '#f59e0b');
+  }
+}
+
+function setBreakdown(key, val, color) {
+  document.getElementById(`br-${key}`).style.width = `${val * 100 / 0.35}%`;
+  document.getElementById(`br-${key}`).style.background = color;
+  document.getElementById(`bv-${key}`).textContent = val.toFixed(3);
+}
+
+function clearBreakdown() {
+  ['throughput','wait','queue','em','phase','starv'].forEach(k => {
+    document.getElementById(`br-${k}`).style.width = '0%';
+    document.getElementById(`bv-${k}`).textContent = '—';
+  });
+}
+
+function appendLog(result) {
+  const log = document.getElementById('step-log');
+  const info = result.info;
+  let line = `<div class="log-line">`;
+  line += `<span class="step-n">[step ${info.step}]</span> `;
+  line += `Phase ${selectedPhase} (${PHASE_NAMES[selectedPhase]}) · ${document.getElementById('duration-slider').value}s · `;
+  line += `<span class="rew">reward=${result.reward.toFixed(4)}</span> · `;
+  line += `cleared=${info.cleared} · queue=${info.queue_total} · wait=${info.avg_wait}s`;
+  if (info.incidents && info.incidents.length > 0)
+    line += ` · <span class="incident">⚠ incident:${info.incidents.join(',')}</span>`;
+  if (info.emergencies_yielded > 0)
+    line += ` · <span class="emergency">🚨 EM yielded</span>`;
+  if (result.done)
+    line += ` · <span class="done">✅ EPISODE DONE (mean=${(rewardHistory.reduce((a,b)=>a+b,0)/rewardHistory.length).toFixed(4)})</span>`;
+  line += `</div>`;
+  log.innerHTML += line;
+  log.scrollTop = log.scrollHeight;
+}
+
+// ── INTERSECTION CANVAS ───────────────────────────────────────────────────
+function drawIntersection(obs, phase) {
+  const canvas = document.getElementById('intersection');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const cx = W / 2, cy = H / 2;
+  const roadW = 70;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // road background
+  ctx.fillStyle = '#1a1d27';
+  ctx.fillRect(0, 0, W, H);
+
+  // road tarmac
+  ctx.fillStyle = '#2d3142';
+  ctx.fillRect(cx - roadW / 2, 0, roadW, H);  // vertical
+  ctx.fillRect(0, cy - roadW / 2, W, roadW);  // horizontal
+
+  // intersection box
+  ctx.fillStyle = '#252839';
+  ctx.fillRect(cx - roadW / 2, cy - roadW / 2, roadW, roadW);
+
+  // lane markings
+  ctx.setLineDash([12, 10]);
+  ctx.strokeStyle = '#4a5070';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, cy - roadW / 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, cy + roadW / 2); ctx.lineTo(cx, H); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(cx - roadW / 2, cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx + roadW / 2, cy); ctx.lineTo(W, cy); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // stop lines
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.moveTo(cx - roadW / 2 - 2, cy - roadW / 2); ctx.lineTo(cx + roadW / 2 + 2, cy - roadW / 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx - roadW / 2 - 2, cy + roadW / 2); ctx.lineTo(cx + roadW / 2 + 2, cy + roadW / 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx - roadW / 2, cy - roadW / 2 - 2); ctx.lineTo(cx - roadW / 2, cy + roadW / 2 + 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx + roadW / 2, cy - roadW / 2 - 2); ctx.lineTo(cx + roadW / 2, cy + roadW / 2 + 2); ctx.stroke();
+
+  // traffic lights per arm
+  const greenDirs = [[['north','south'],[],['north'],['east']][phase], phase === 0 ? ['north','south'] : phase === 1 ? ['east','west'] : phase === 2 ? ['north'] : ['east']];
+  const greenSet = new Set(greenDirs[1]);
+
+  const armPosLight = {
+    north: { x: cx + roadW / 2 + 8, y: cy - roadW / 2 - 28 },
+    south: { x: cx - roadW / 2 - 28, y: cy + roadW / 2 + 8 },
+    east:  { x: cx + roadW / 2 + 8, y: cy + roadW / 2 + 8 },
+    west:  { x: cx - roadW / 2 - 28, y: cy - roadW / 2 - 28 },
+  };
+
+  if (obs) {
+    obs.arms.forEach(arm => {
+      const col = greenSet.has(arm.direction) ? '#22c55e' : '#ef4444';
+      const lp = armPosLight[arm.direction];
+      // signal housing
+      ctx.fillStyle = '#111';
+      ctx.beginPath(); ctx.roundRect(lp.x - 6, lp.y - 6, 22, 22, 4); ctx.fill();
+      // signal light
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.arc(lp.x + 5, lp.y + 5, 7, 0, Math.PI * 2); ctx.fill();
+      if (col === '#22c55e') { ctx.shadowColor = '#22c55e'; ctx.shadowBlur = 12; ctx.fill(); ctx.shadowBlur = 0; }
+
+      // queue cars
+      const q = arm.queue_length;
+      const qCapped = Math.min(q, 8);
+      const hasEm = arm.has_emergency;
+      drawQueue(ctx, arm.direction, qCapped, cx, cy, roadW, hasEm);
+
+      // arm labels
+      drawArmLabel(ctx, arm, cx, cy, roadW, greenSet.has(arm.direction));
+    });
+  }
+
+  // phase label in centre
+  ctx.fillStyle = 'rgba(20,22,36,0.85)';
+  ctx.beginPath(); ctx.roundRect(cx - 55, cy - 12, 110, 24, 6); ctx.fill();
+  ctx.fillStyle = PHASE_COLORS[phase];
+  ctx.font = 'bold 11px Segoe UI, system-ui';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(PHASE_NAMES[phase], cx, cy);
+}
+
+function drawQueue(ctx, dir, count, cx, cy, roadW, hasEm) {
+  const carW = 10, carH = 18, gap = 4;
+  const baseOffset = roadW / 2 + 6;
+  for (let i = 0; i < count; i++) {
+    let x, y;
+    const offset = baseOffset + i * (carH + gap);
+    const isEmCar = hasEm && i === 0;
+    ctx.fillStyle = isEmCar ? '#ef4444' : '#4f8ef7';
+    if (dir === 'north') { x = cx - carW / 2; y = cy - offset - carH; ctx.fillRect(x, y, carW, carH); }
+    else if (dir === 'south') { x = cx - carW / 2; y = cy + offset; ctx.fillRect(x, y, carW, carH); }
+    else if (dir === 'east') { x = cx + offset; y = cy - carW / 2; ctx.fillRect(x, y, carH, carW); }
+    else if (dir === 'west') { x = cx - offset - carH; y = cy - carW / 2; ctx.fillRect(x, y, carH, carW); }
+    if (isEmCar) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.strokeRect(x, y, dir === 'north' || dir === 'south' ? carW : carH, dir === 'north' || dir === 'south' ? carH : carW); }
+  }
+  if (count >= 8) {
+    ctx.fillStyle = '#f59e0b';
+    ctx.font = 'bold 10px Segoe UI';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const offx = dir === 'east' ? cx + roadW / 2 + 8 * (carH + gap) + 12 : dir === 'west' ? cx - roadW / 2 - 8 * (carH + gap) - 12 : cx;
+    const offy = dir === 'north' ? cy - roadW / 2 - 8 * (carH + gap) - 12 : dir === 'south' ? cy + roadW / 2 + 8 * (carH + gap) + 12 : cy;
+    ctx.fillText(`+`, offx, offy);
+  }
+}
+
+function drawArmLabel(ctx, arm, cx, cy, roadW, isGreen) {
+  const lp = {
+    north: { x: cx, y: 18 },
+    south: { x: cx, y: cy * 2 - 14 },
+    east:  { x: cx * 2 - 20, y: cy },
+    west:  { x: 20, y: cy },
+  }[arm.direction];
+  ctx.fillStyle = isGreen ? '#22c55e' : '#94a3b8';
+  ctx.font = 'bold 11px Segoe UI';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(`${arm.queue_length} | ${arm.avg_wait_time.toFixed(0)}s`, lp.x, lp.y);
+}
+
+// ── HISTORY CHART ─────────────────────────────────────────────────────────
+function drawHistory() {
+  const canvas = document.getElementById('history-chart');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width = canvas.offsetWidth;
+  const H = canvas.height = 90;
+  ctx.clearRect(0, 0, W, H);
+
+  if (rewardHistory.length < 2) {
+    ctx.fillStyle = '#4a5070';
+    ctx.font = '12px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText('Run at least 2 steps to see history', W / 2, H / 2);
+    return;
+  }
+
+  const pad = 10;
+  const xStep = (W - pad * 2) / (maxSteps - 1);
+  const yScale = (H - pad * 2);
+
+  // grid line at 0.5
+  ctx.strokeStyle = '#f59e0b33';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  const y05 = pad + (1 - 0.5) * yScale;
+  ctx.beginPath(); ctx.moveTo(pad, y05); ctx.lineTo(W - pad, y05); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // area fill
+  ctx.beginPath();
+  rewardHistory.forEach((r, i) => {
+    const x = pad + i * xStep;
+    const y = pad + (1 - r) * yScale;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  const lastX = pad + (rewardHistory.length - 1) * xStep;
+  ctx.lineTo(lastX, H - pad);
+  ctx.lineTo(pad, H - pad);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(79,142,247,0.15)';
+  ctx.fill();
+
+  // line
+  ctx.beginPath();
+  rewardHistory.forEach((r, i) => {
+    const x = pad + i * xStep;
+    const y = pad + (1 - r) * yScale;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = '#4f8ef7';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // last point dot
+  const lx = pad + (rewardHistory.length - 1) * xStep;
+  const ly = pad + (1 - rewardHistory[rewardHistory.length - 1]) * yScale;
+  ctx.beginPath(); ctx.arc(lx, ly, 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#4f8ef7'; ctx.fill();
+
+  // y labels
+  ctx.fillStyle = '#4a5070'; ctx.font = '10px Segoe UI'; ctx.textAlign = 'left';
+  ctx.fillText('1.0', 2, pad + 4);
+  ctx.fillText('0.5', 2, y05 + 4);
+  ctx.fillText('0.0', 2, H - pad + 4);
+}
+</script>
+</body>
+</html>
