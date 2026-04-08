@@ -9,6 +9,7 @@ OpenEnv checker expects:
   POST /step/{task_id} → step with specific task
   GET  /state          → state of default task
   GET  /spec           → openenv.yaml as JSON
+  GET  /validate       → environment validation info
 """
 from __future__ import annotations
 from pathlib import Path
@@ -27,7 +28,8 @@ app = FastAPI(
     version="1.0.0",
 )
 
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=[
+                   "*"], allow_methods=["*"], allow_headers=["*"])
 
 STATIC = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
@@ -47,7 +49,8 @@ def _make_env(task_id: str) -> SmartTrafficEnv:
 
 def _get_env(task_id: str) -> SmartTrafficEnv:
     if task_id not in _envs:
-        raise HTTPException(status_code=400, detail=f"No active episode for '{task_id}'. Call POST /reset/{task_id} first.")
+        raise HTTPException(
+            status_code=400, detail=f"No active episode for '{task_id}'. Call POST /reset/{task_id} first.")
     return _envs[task_id]
 
 
@@ -87,6 +90,22 @@ def get_spec():
     spec_path = Path(__file__).parent / "openenv.yaml"
     with open(spec_path) as f:
         return yaml.safe_load(f)
+
+
+# ── OPENENV VALIDATE ──────────────────────────────────────────────────────────
+@app.get("/validate")
+def validate():
+    """OpenEnv validation endpoint — confirms environment is ready."""
+    return {
+        "status": "ok",
+        "env": "smart-traffic-signal-control",
+        "version": "1.0.0",
+        "tasks": list(TASKS.keys()),
+        "default_task": DEFAULT_TASK,
+        "observation_space": "object",
+        "action_space": "object",
+        "reward_range": [0.0, 1.0],
+    }
 
 
 # ── OPENENV RESET ─────────────────────────────────────────────────────────────
