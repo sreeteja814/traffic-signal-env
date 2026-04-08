@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "smart-traffic-signal-control"
+version = "1.0.0"
+description = "RL environment simulating a 4-way signalised intersection for OpenEnv"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.0",
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.29.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "httpx"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["env*"]
+
+[tool.openenv]
+name = "smart-traffic-signal-control"
+version = "1.0.0"
+entry_point = "app:app"
+server = "uvicorn"
+host = "0.0.0.0"
+port = 7860
+tasks = ["easy", "medium", "hard"]
+default_task = "easy"
