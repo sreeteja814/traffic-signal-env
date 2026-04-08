@@ -5,9 +5,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY env/        ./env/
-COPY static/     ./static/
-COPY app.py      .
+COPY env/         ./env/
+COPY static/      ./static/
+COPY app.py       .
+COPY inference.py .
 COPY openenv.yaml .
 
 EXPOSE 7860
