@@ -7,7 +7,7 @@ fully reproducible scores.
 
 Usage
 -----
-    python inference.py                    # run all agents × all tasks
+    python inference.py                    # run all agents x all tasks
     python inference.py --task easy        # one task only
     python inference.py --agent greedy     # one agent only
     python inference.py --verbose          # step-level output
@@ -68,40 +68,52 @@ TASKS = ["easy", "medium", "hard"]
 # ── Runner ────────────────────────────────────────────────────────────────────
 
 def run_episode(task_id: str, agent_name: str, verbose: bool = False) -> dict:
-    env = SmartTrafficEnv(task_id=task_id)
-    rng = random.Random(SEED)
-    obs = env.reset()
-    rewards: list[float] = []
+    try:
+        env = SmartTrafficEnv(task_id=task_id)
+        rng = random.Random(SEED)
+        obs = env.reset()
+        rewards: list[float] = []
 
-    while True:
-        action = AGENTS[agent_name](obs, rng)
-        result = env.step(action)
-        rewards.append(result.reward)
+        while True:
+            action = AGENTS[agent_name](obs, rng)
+            result = env.step(action)
+            rewards.append(result.reward)
 
-        if verbose:
-            info = result.info
-            print(
-                f"  [{task_id}][{agent_name}] "
-                f"step={info['step']:>3}  phase={action.phase}  "
-                f"dur={action.duration:>2}s  "
-                f"cleared={info['cleared']:>3}  "
-                f"queue={info['queue_total']:>3}  "
-                f"reward={result.reward:.4f}"
-            )
+            if verbose:
+                info = result.info
+                print(
+                    f"  [{task_id}][{agent_name}] "
+                    f"step={info['step']:>3}  phase={action.phase}  "
+                    f"dur={action.duration:>2}s  "
+                    f"cleared={info['cleared']:>3}  "
+                    f"queue={info['queue_total']:>3}  "
+                    f"reward={result.reward:.4f}"
+                )
 
-        if result.done:
-            break
-        obs = result.observation
+            if result.done:
+                break
+            obs = result.observation
 
-    ep = env.episode_result()
-    return {
-        "task":          task_id,
-        "agent":         agent_name,
-        "mean_reward":   ep.mean_reward,
-        "total_cleared": ep.total_cleared,
-        "avg_wait_s":    ep.avg_wait_time,
-        "steps":         ep.total_steps,
-    }
+        ep = env.episode_result()
+        return {
+            "task":          task_id,
+            "agent":         agent_name,
+            "mean_reward":   ep.mean_reward,
+            "total_cleared": ep.total_cleared,
+            "avg_wait_s":    ep.avg_wait_time,
+            "steps":         ep.total_steps,
+        }
+    except Exception as e:
+        print(f"[ERROR] task={task_id} agent={agent_name}: {e}")
+        return {
+            "task":          task_id,
+            "agent":         agent_name,
+            "mean_reward":   0.0,
+            "total_cleared": 0,
+            "avg_wait_s":    0.0,
+            "steps":         0,
+            "error":         str(e),
+        }
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -122,11 +134,11 @@ def main():
     results = []
     for task in tasks_to_run:
         for agent in agents_to_run:
-            print(f"Running  task={task:<8}  agent={agent} …")
+            print(f"Running  task={task:<8}  agent={agent} ...")
             r = run_episode(task, agent, verbose=args.verbose)
             results.append(r)
             print(
-                f"  → mean_reward={r['mean_reward']:.4f}  "
+                f"  -> mean_reward={r['mean_reward']:.4f}  "
                 f"cleared={r['total_cleared']}  "
                 f"avg_wait={r['avg_wait_s']:.1f}s\n"
             )
@@ -146,7 +158,7 @@ def main():
 
     with open("baseline_results.json", "w") as f:
         json.dump(results, f, indent=2)
-    print("\nResults saved → baseline_results.json")
+    print("\nResults saved -> baseline_results.json")
 
 
 if __name__ == "__main__":
